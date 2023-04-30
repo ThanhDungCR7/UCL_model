@@ -89,7 +89,7 @@ def get(seed=0, pc_valid=0.10, tasknum=10):
             data[0][s] = {'x':[], 'y':[]}
             data[0][s]['x'] = torch.load(os.path.expanduser('../dat/binary_cifar10'), 'data'+s+'x.bin')
             data[0][s]['y'] = torch.load(os.path.expanduser('../dat/binary_cifar10'), 'data'+s+'y.bin')
-        data[0]['ncla'] = len(np.unique(data[0]['train']['y']numpy()))
+        data[0]['ncla'] = len(np.unique(data[0]['train']['y'].numpy()))
         data['name'] = 'cifar10'
 
 
