@@ -21,6 +21,6 @@ from bayes_layer import BayesianLinear, BayesianConv2D, _calculate_fan_in_and_fa
 class Appr(object):
 
     def __init__(self, model, nepochs=100, sbatch=256, lr=0.001,
-                 lr_min=2e-6, lr_factor=3, lr_patience=5, clipgrad):
+                 lr_min=2e-6, lr_factor=3, lr_patience=5, clipgrad=100, args=None, log_name=None, split=False):
         return
     
