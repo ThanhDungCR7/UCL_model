@@ -207,3 +207,130 @@ else:
     
 
     # approach = ucl, exp = cifar10_100 ======> network = conv_net_ucl
+
+########################################################################################################################
+
+# Load
+print('Load data...')
+data, taskcla, inputsize = dataloader.get(seed=args.seed, tasknum=args.tasknum)
+print('Input size =', inputsize, '\nTask info =', taskcla)
+
+# Inits
+print('Inits...')
+# print(inputsize, taskcla)
+torch.set_default_tensor_type('torch.cuda.FloatTensor')
+if args.conv_net == False:
+    if args.approach == "ucl" or args.approach == 'ucl_ablation':
+            net = network.Net(inputsize, taskcla, args.ratio, unitN=args.unitN,  split = split, notMNIST=notMNIST).cuda()
+            net_old = network.Net(inputsize, taskcla, args.ratio, unitN=args.unitN, split = split, notMNIST=notMNIST).cuda()
+            appr = approach.Appr(net, sbatch=args.batch_size, nepochs=args.nepochs, args=args, log_name=log_name, split=split)
+    else:
+        net = network.Net(inputsize, taskcla, unitN=args.unitN, split = split, notMNIST=notMNIST).cuda()
+        net_old = network.Net(inputsize, taskcla, unitN=args.unitN, split = split, notMNIST=notMNIST).cuda()
+        appr = approach.Appr(net, sbatch=args.batch_size, nepochs=args.nepochs, args=args, log_name=log_name, split=split)
+else:
+    if args.approach == 'ucl' or args.approach == 'ucl_ablation':
+        net = network.Net(inputsize, taskcla, args.ratio).cuda()
+        net_old = network.Net(inputsize, taskcla, args.ratio).cuda()
+        appr = approach.Appr(net, sbatch=args.batch_size, lr=args.lr, nepochs=args.nepochs, args=args,
+                             log_name=log_name, split=split)
+    else:
+        net = network.Net(inputsize, taskcla).cuda()
+        net_old = network.Net(inputsize, taskcla).cuda()
+        appr = approach.Appr(net, sbatch=args.batch_size, lr=args.lr, nepochs=args.nepochs, args=args,
+                             log_name=log_name, split=split)
+
+utils.print_model_report(net)
+
+print(appr.criterion)
+utils.print_optimizer_config(appr.optimizer)
+print('-' * 100)
+
+
+# Loop tasks
+acc = np.zeros((len(taskcla), len(taskcla)), dtype=np.float32)
+lss = np.zeros((len(taskcla), len(taskcla)), dtype=np.float32)
+for t, ncla in taskcla:
+
+    if t==args.tasknum:
+        break
+
+    print('*' * 100)
+    print('Task {:2d} ({:s})'.format(t, data[t]['name']))
+    print('*' * 100)
+
+    if args.approach == 'joint':
+        # Get data. We do not put it to GPU
+        if t == 0:
+            xtrain = data[t]['train']['x']
+            ytrain = data[t]['train']['y']
+            xvalid = data[t]['valid']['x']
+            yvalid = data[t]['valid']['y']
+            task_t = t * torch.ones(xtrain.size(0)).int()
+            task_v = t * torch.ones(xvalid.size(0)).int()
+            task = [task_t, task_v]
+        else:
+            xtrain = torch.cat((xtrain, data[t]['train']['x']))
+            ytrain = torch.cat((ytrain, data[t]['train']['y']))
+            xvalid = torch.cat((xvalid, data[t]['valid']['x']))
+            yvalid = torch.cat((yvalid, data[t]['valid']['y']))
+            task_t = torch.cat((task_t, t * torch.ones(data[t]['train']['y'].size(0)).int()))
+            task_v = torch.cat((task_v, t * torch.ones(data[t]['valid']['y'].size(0)).int()))
+            task = [task_t, task_v]
+    else:
+        # Get data
+        xtrain = data[t]['train']['x'].cuda()
+        xvalid = data[t]['valid']['x'].cuda()
+            
+        ytrain = data[t]['train']['y'].cuda()
+        yvalid = data[t]['valid']['y'].cuda()
+        task = t
+
+    # Train
+    appr.train(task, xtrain, ytrain, xvalid, yvalid, data, inputsize, taskcla)
+    print('-' * 100)
+
+    # Test
+    for u in range(t + 1):
+        xtest = data[u]['test']['x'].cuda()
+        ytest = data[u]['test']['y'].cuda()
+        test_loss, test_acc = appr.eval(u, xtest, ytest)
+        print('>>> Test on task {:2d} - {:15s}: loss={:.3f}, acc={:5.1f}% <<<'.format(u, data[u]['name'], test_loss,
+                                                                                      100 * test_acc))
+        acc[t, u] = test_acc
+        lss[t, u] = test_loss
+
+# Done
+print("*" * 100)
+print('Accuracies = ')
+for i in range(acc.shape[0]):
+    print('\t', end='')
+    for j in range(acc.shape[1]):
+        print('{:5.1f}% '.format(100 * acc[i, j]), end='')
+    print()
+print('*' * 100)
+print('Done!')
+
+print('[Elapsed time = {:.1f} h]'.format((time.time() - tstart) / (60 * 60)))
+
+if hasattr(appr, 'logs'):
+    if appr.logs is not None:
+        # save task names
+        from copy import deepcopy
+
+        appr.logs['task_name'] = {}
+        appr.logs['test_acc'] = {}
+        appr.logs['test_loss'] = {}
+        for t, ncla in taskcla:
+            appr.logs['task_name'][t] = deepcopy(data[t]['name'])
+            appr.logs['test_acc'][t] = deepcopy(acc[t, :])
+            appr.logs['test_loss'][t] = deepcopy(lss[t, :])
+        # pickle
+        import gzip
+        import pickle
+
+        with gzip.open(os.path.join(appr.logpath), 'wb') as output:
+            pickle.dump(appr.logs, output, pickle.HIGHEST_PROTOCOL)
+
+########################################################################################################################
+
