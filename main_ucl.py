@@ -125,9 +125,9 @@ elif args.approach == 'ucl':
     from approaches import ucl as approach
 elif args.approach == 'ucl_ablation':
     from approaches import ucl_ablation as approach
-elif args.approach == 'baye_hat':
+elif args.approach == 'bayes_hat':
     from core import baye_hat as approach
-elif args.approach == 'baye_fisher':
+elif args.approach == 'bayes_fisher':
     from core import baye_fisher as approach
 elif args.approach == 'sgd':
     from approaches import sgd as approach
